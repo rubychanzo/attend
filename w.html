@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>현장 참석 등록</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; background:#f3f6f8; color:#1f2d3a; font-family:'Apple SD Gothic Neo','Malgun Gothic',sans-serif; font-size:16px; }
+  .wrap { max-width:480px; margin:0 auto; padding:24px 18px 40px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .when { color:#6b7785; font-size:15px; margin-bottom:18px; }
+  .card { background:#fff; border-radius:14px; padding:18px; box-shadow:0 2px 10px rgba(0,0,0,.05); }
+  label.f { display:block; font-weight:700; font-size:14px; color:#4a5866; margin-bottom:14px; }
+  label.f input { display:block; width:100%; margin-top:6px; border:1px solid #c8d1d9; border-radius:10px; padding:13px 12px; font:inherit; }
+  .consent { background:#f6f8fa; border-radius:10px; padding:12px 14px; font-size:13.5px; line-height:1.6; color:#4a5866; white-space:pre-line; margin:6px 0 10px; }
+  .agree { display:flex; gap:10px; align-items:center; font-weight:700; }
+  .agree input { width:24px; height:24px; }
+  button { width:100%; margin-top:18px; border:0; border-radius:12px; padding:16px; font:inherit; font-size:18px; font-weight:800; background:#1f6fb2; color:#fff; }
+  button:disabled { opacity:.5; }
+  .msg { border-radius:10px; padding:12px 14px; margin-top:12px; font-size:15px; line-height:1.5; }
+  .err { background:#fdecea; color:#a93226; }
+  .done { text-align:center; padding:40px 10px; }
+  .done .ic { font-size:64px; }
+  .done .big { font-size:24px; font-weight:800; margin-top:10px; }
+  .done .sub { color:#6b7785; margin-top:8px; line-height:1.6; }
+  .org { color:#9aa5b1; font-size:13px; margin-top:24px; text-align:center; }
+</style>
+<script src="config.js"></script>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+'use strict';
+const CFG = window.ATTEND_CONFIG || {};
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const e = new URLSearchParams(location.search).get('e') || '';
+const app = document.getElementById('app');
+const orgLine = CFG.orgName ? `<div class="org">${esc(CFG.orgName)}</div>` : '';
+
+if (!CFG.api || !/^[A-Za-z0-9-]+$/.test(e)) {
+  app.innerHTML = '<div class="card msg err">등록 화면 설정이 올바르지 않습니다. 행사 직원에게 문의해 주세요.</div>';
+} else {
+  app.innerHTML = `<h1 id="ev">현장 참석 등록</h1><div class="when" id="when"></div>
+  <div class="card">
+    <label class="f">이름 <input type="text" id="name" autocomplete="name"></label>
+    <label class="f">연락처 <input type="tel" id="phone" placeholder="010-0000-0000" autocomplete="tel"></label>
+    <label class="f">소속 <input type="text" id="org" autocomplete="organization" placeholder="없으면 비워 두세요"></label>
+    <div style="font-weight:700;font-size:14px;color:#4a5866">개인정보 수집·이용 안내</div>
+    <div class="consent">${esc(CFG.consentText || '')}</div>
+    <label class="agree"><input type="checkbox" id="ok"> 위 내용에 동의합니다</label>
+    <div id="msg"></div>
+    <button id="go">참석 등록</button>
+  </div>${orgLine}`;
+  fetch(CFG.api + '?action=event&e=' + encodeURIComponent(e)).then(r => r.json()).then(r => {
+    if (!r.ok) { document.getElementById('msg').innerHTML = '<div class="msg err">행사 정보를 찾을 수 없습니다. 행사 직원에게 문의해 주세요.</div>'; return; }
+    document.getElementById('ev').textContent = r.event.name;
+    document.getElementById('when').textContent = [r.event.date, r.event.place].filter(Boolean).join(' · ') || '현장 참석 등록';
+  }).catch(() => {});
+  document.getElementById('go').onclick = async () => {
+    const v = id => document.getElementById(id).value.trim();
+    const msg = m => document.getElementById('msg').innerHTML = `<div class="msg err">${esc(m)}</div>`;
+    const name = v('name'), phone = v('phone').replace(/[^0-9]/g, ''), org = v('org');
+    if (!name) return msg('이름을 입력해 주세요.');
+    if (phone.length < 10) return msg('연락처를 정확히 입력해 주세요.');
+    if (!document.getElementById('ok').checked) return msg('개인정보 수집·이용에 동의해 주세요.');
+    const btn = document.getElementById('go'); btn.disabled = true; btn.textContent = '등록 중…';
+    try {
+      const r = await (await fetch(CFG.api, { method: 'POST', body: JSON.stringify({ action: 'walkin', e, name, phone, org, consent: true }) })).json();
+      if (!r.ok) throw new Error(r.error || '등록하지 못했습니다.');
+      app.innerHTML = `<div class="card done"><div class="ic">✅</div>
+        <div class="big">${r.status === 'already' ? '이미 참석 확인되었습니다' : '참석 등록되었습니다'}</div>
+        <div class="sub">${esc(name)} 님, ${r.status === 'already' ? '이미 참석으로 기록되어 있어요.' : '참석해 주셔서 감사합니다.'}<br>이 화면을 입구 직원에게 보여주셔도 됩니다.</div></div>${orgLine}`;
+    } catch (err) {
+      btn.disabled = false; btn.textContent = '참석 등록';
+      msg(navigator.onLine ? err.message : '인터넷 연결을 확인한 뒤 다시 눌러 주세요. 연결이 어려우면 입구 직원에게 말씀해 주세요.');
+    }
+  };
+}
+</script>
+</body>
+</html>
