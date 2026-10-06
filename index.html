@@ -65,6 +65,9 @@
   .tag { display:inline-block; font-size:12px; padding:1px 7px; border-radius:10px; background:#eef2f5; color:var(--muted); margin-left:6px; vertical-align:middle; font-weight:700; }
   .tag.walk { background:#fff1dc; color:#a46400; }
   .tag.pend { background:#fff6cc; color:#8a6d00; }
+  .tag.vip { background:#f3e8ff; color:#6b21a8; }
+  .result.vip { box-shadow: inset 0 0 0 6px #a855f7; }
+  .result .vipline { display:inline-block; margin-top:8px; background:#fff; color:#6b21a8; font-weight:800; font-size:18px; padding:4px 12px; border-radius:20px; }
 
   #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#1f2d3a; color:#fff; padding:12px 18px; border-radius:10px; font-size:15px; z-index:50; max-width:90vw; display:none; }
   #toast.err { background:var(--err); }
@@ -12570,7 +12573,8 @@ function renderHeader() {
   $('#h-ev').textContent = L ? L.event.name + (L.event.date ? ' · ' + L.event.date : '') : '행사 참석확인';
   if (L) {
     const all = L.people.length, att = L.people.filter(p => p.att).length, walk = L.people.filter(p => p.type === '현장').length;
-    $('#h-cnt').innerHTML = `참석 <b>${att}</b> / ${all}명${walk ? ` <span style="opacity:.8">(현장 ${walk})</span>` : ''}`;
+    const vips = L.people.filter(p => p.vip), vAtt = vips.filter(p => p.att).length;
+    $('#h-cnt').innerHTML = `참석 <b>${att}</b> / ${all}명${walk ? ` <span style="opacity:.8">(현장 ${walk})</span>` : ''}${vips.length ? ` · <span style="color:#e9d5ff">★ 내빈 ${vAtt}/${vips.length}</span>` : ''}`;
   } else $('#h-cnt').textContent = '';
   const pill = $('#h-sync'); const n = myQueue().length;
   if (!L) { pill.textContent = '행사 미선택'; pill.className = 'pill'; }
@@ -12619,15 +12623,16 @@ function onScan(text) {
   if (q.walk) return showResult('err', '현장등록용 QR입니다', '참석자 본인 휴대폰으로 찍는 QR이에요');
   if (serverMode() && q.e !== L.event.id) return showResult('err', '다른 행사의 QR입니다', `QR 행사번호 ${q.e}`);
   const r = checkIn(q.t);
-  if (r.status === 'ok') showResult('ok', `${r.p.name} 님`, `${r.p.org ? r.p.org + ' · ' : ''}참석 확인되었습니다`);
-  else if (r.status === 'already') showResult('already', `${r.p.name} 님 · 이미 확인됨`, `${hm(r.p.time)} ${r.p.device ? '(' + r.p.device + ')' : ''}에 확인된 QR입니다`);
+  if (r.status === 'ok') showResult('ok', `${r.p.name} 님`, `${r.p.org ? r.p.org + ' · ' : ''}참석 확인되었습니다`, r.p.vip);
+  else if (r.status === 'already') showResult('already', `${r.p.name} 님 · 이미 확인됨`, `${hm(r.p.time)} ${r.p.device ? '(' + r.p.device + ')' : ''}에 확인된 QR입니다`, r.p.vip);
   else if (r.status === 'pending') showResult('pend', '명단에 아직 없는 QR', '참석으로 기록해 두었습니다. 인터넷 연결 시 서버에서 확인합니다.');
   else showResult('err', '명단에 없는 QR입니다', '명단 탭에서 이름으로 찾아 주세요');
 }
-let resState = { cls: 'idle', big: 'QR을 네모 칸에 비춰 주세요', sub: '' };
-function showResult(cls, big, sub) {
-  resState = { cls, big, sub };
-  const el = $('#res'); if (el) { el.className = 'result ' + cls; el.innerHTML = `<div class="big">${esc(big)}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}`; }
+let resState = { cls: 'idle', big: 'QR을 네모 칸에 비춰 주세요', sub: '', vip: '' };
+const resHtml = r => `<div class="big">${esc(r.big)}</div>${r.sub ? `<div class="sub">${esc(r.sub)}</div>` : ''}${r.vip ? `<div><span class="vipline">★ 내빈${r.vip !== '내빈' ? ' · ' + esc(r.vip) : ''}</span></div>` : ''}`;
+function showResult(cls, big, sub, vip) {
+  resState = { cls, big, sub, vip: vip || '' };
+  const el = $('#res'); if (el) { el.className = 'result ' + cls + (vip ? ' vip' : ''); el.innerHTML = resHtml(resState); }
   feedback(cls);
 }
 let actx;
@@ -12651,7 +12656,7 @@ function renderScan() {
       <div class="off" id="cam-off" ${stream ? 'hidden' : ''}>카메라가 꺼져 있습니다<br>아래 ‘카메라 켜기’를 눌러 주세요</div></div>
     <div class="bar"><button class="btn pri lg" id="cam-btn">${stream ? '카메라 끄기' : '카메라 켜기'}</button>
       <button class="btn lg" id="cam-flip" ${stream ? '' : 'disabled'}>🔄 전환</button></div>
-    <div id="res" class="result ${resState.cls}"><div class="big">${esc(resState.big)}</div>${resState.sub ? `<div class="sub">${esc(resState.sub)}</div>` : ''}</div>`;
+    <div id="res" class="result ${resState.cls}${resState.vip ? ' vip' : ''}">${resHtml(resState)}</div>`;
   if (stream) { const v = $('#vid'); v.srcObject = stream; v.play().catch(() => {}); }
   $('#cam-btn').onclick = () => stream ? (stopCam(), renderScan()) : startCam();
   $('#cam-flip').onclick = () => { facing = facing === 'environment' ? 'user' : 'environment'; startCam(); };
@@ -12695,7 +12700,7 @@ function renderList() {
   if (!$('#l-q')) {
     el.innerHTML = `<div class="card">
       <div class="row"><input type="search" id="l-q" placeholder="이름, 소속, 연락처 뒷자리로 찾기" style="flex:3 1 220px">
-      <select id="l-f" style="flex:1 1 120px"><option value="">전체</option><option value="no">미참석</option><option value="yes">참석</option><option value="walk">현장등록</option></select></div>
+      <select id="l-f" style="flex:1 1 120px"><option value="">전체</option><option value="no">미참석</option><option value="yes">참석</option><option value="walk">현장등록</option><option value="vip">★ 내빈</option></select></div>
       <ul class="plist" id="l-ul"></ul></div>`;
     $('#l-q').addEventListener('input', e => { lq = e.target.value; drawList(); });
     $('#l-f').addEventListener('change', e => { lf = e.target.value; drawList(); });
@@ -12711,13 +12716,13 @@ function renderList() {
 function drawList() {
   const q = lq.trim().toLowerCase(), qd = digits(q);
   let arr = L.people.filter(p => {
-    if (lf === 'no' && p.att) return false; if (lf === 'yes' && !p.att) return false; if (lf === 'walk' && p.type !== '현장') return false;
+    if (lf === 'no' && p.att) return false; if (lf === 'yes' && !p.att) return false; if (lf === 'walk' && p.type !== '현장') return false; if (lf === 'vip' && !p.vip) return false;
     if (!q) return true;
     return p.name.toLowerCase().includes(q) || (p.org || '').toLowerCase().includes(q) || (qd.length >= 3 && digits(p.phone).endsWith(qd));
   });
-  arr = arr.slice().sort((a, b) => (a.att - b.att) || a.name.localeCompare(b.name, 'ko'));
+  arr = arr.slice().sort((a, b) => (a.att - b.att) || (!!b.vip - !!a.vip) || a.name.localeCompare(b.name, 'ko'));
   $('#l-ul').innerHTML = arr.length ? arr.slice(0, 300).map(p => `<li>
-    <div class="who"><div class="nm">${esc(p.name)}${p.type === '현장' ? '<span class="tag walk">현장</span>' : ''}${p.pending ? '<span class="tag pend">미전송</span>' : ''}</div>
+    <div class="who"><div class="nm">${p.vip ? '★ ' : ''}${esc(p.name)}${p.vip ? `<span class="tag vip">${esc(p.vip)}</span>` : ''}${p.type === '현장' ? '<span class="tag walk">현장</span>' : ''}${p.pending ? '<span class="tag pend">미전송</span>' : ''}</div>
       <div class="meta">${esc(p.org || '-')} · ${esc(p.phone || '')}</div></div>
     ${p.att ? `<div class="done">✓ ${esc(hm(p.time))}<div class="hint">${esc(p.device || '')}</div></div>` : `<button class="btn ok" data-chk="${esc(p.t)}">참석 확인</button>`}
   </li>`).join('') + (arr.length > 300 ? `<li class="hint">… ${arr.length - 300}명 더 있음. 검색어를 입력하세요.</li>` : '')
@@ -12893,7 +12898,7 @@ function importFile(file) {
         const t = ix('등록번호') >= 0 && r[ix('등록번호')] ? String(r[ix('등록번호')]).trim() : 'F' + (i + 1);
         people.push({ t, name, phone: ix('연락처') >= 0 ? String(r[ix('연락처')]) : '', org: ix('소속') >= 0 ? String(r[ix('소속')]) : '',
           type: ix('구분') >= 0 && r[ix('구분')] ? String(r[ix('구분')]) : '사전',
-          att: ix('참석') >= 0 && String(r[ix('참석')]).trim() === '참석', time: ix('확인시각') >= 0 ? String(r[ix('확인시각')]) : '', device: ix('확인기기') >= 0 ? String(r[ix('확인기기')]) : '' });
+          att: ix('참석') >= 0 && String(r[ix('참석')]).trim() === '참석', vip: ix('내빈') >= 0 ? String(r[ix('내빈')] || '').trim() : '', time: ix('확인시각') >= 0 ? String(r[ix('확인시각')]) : '', device: ix('확인기기') >= 0 ? String(r[ix('확인기기')]) : '' });
       });
       const name = prompt('행사 이름을 입력하세요', file.name.replace(/\.(xlsx|xls|csv)$/i, '')) || file.name;
       L = { event: { id: 'FILE-' + Date.now().toString(36), name, date: '', place: '' }, people, source: 'file', file: file.name };
@@ -12904,8 +12909,8 @@ function importFile(file) {
   fr.readAsArrayBuffer(file);
 }
 function exportXlsx() {
-  const aoa = [['등록번호', '이름', '연락처', '소속', '구분', '참석', '확인시각', '확인기기', '비고']];
-  L.people.forEach(p => aoa.push([p.t, p.name, p.phone, p.org, p.type, p.att ? '참석' : '', p.time, p.device, p.pending ? '구글시트 미전송' : '']));
+  const aoa = [['등록번호', '이름', '연락처', '소속', '구분', '내빈', '참석', '확인시각', '확인기기', '비고']];
+  L.people.forEach(p => aoa.push([p.t, p.name, p.phone, p.org, p.type, p.vip || '', p.att ? '참석' : '', p.time, p.device, p.pending ? '구글시트 미전송' : '']));
   const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), '참석현황');
   const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
